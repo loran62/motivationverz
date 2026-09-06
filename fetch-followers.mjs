@@ -4,11 +4,10 @@
   Läuft einmal am Tag automatisch über GitHub Actions.
   Hier steht KEIN geheimer Schlüssel drin. Der kommt aus den GitHub Secrets.
 
-  Wenn eine Plattform mal nicht antwortet, wird die letzte bekannte Zahl
-  behalten, damit die Gesamtsumme nie kaputtgeht.
-
-  Falls eine Plattform dauerhaft keine Zahl mehr liefert, muss nur der
-  passende "actor" Wert unten getauscht werden. Der Rest bleibt gleich.
+  Jede Plattform hat eine oder mehrere Quellen. Klappt die erste nicht,
+  wird automatisch die nächste versucht. Wenn eine Plattform gar nichts
+  liefert, wird die letzte bekannte Zahl behalten, damit die Summe nie
+  kaputtgeht.
 */
 
 import { readFile, writeFile } from "node:fs/promises";
@@ -24,38 +23,62 @@ const USERNAME = "motivationverz";
 const PLATFORMS = [
   {
     name: "youtube",
-    actor: "automationagents/youtube-channel",
-    input: { startUrls: [{ url: `https://www.youtube.com/@${USERNAME}` }] },
+    sources: [
+      {
+        actor: "data_api/youtube-subscribers-scraper-cheap",
+        input: { youtubeHandle: USERNAME },
+      },
+      {
+        actor: "streamers/youtube-scraper",
+        input: {
+          startUrls: [{ url: `https://www.youtube.com/@${USERNAME}` }],
+          maxResults: 1,
+          maxResultsShorts: 0,
+          maxResultStreams: 0,
+        },
+      },
+    ],
   },
   {
     name: "instagram",
-    actor: "apify/instagram-profile-scraper",
-    input: { usernames: [USERNAME] },
+    sources: [
+      {
+        actor: "apify/instagram-profile-scraper",
+        input: { usernames: [USERNAME] },
+      },
+    ],
   },
   {
     name: "tiktok",
-    actor: "clockworks/tiktok-scraper",
-    input: {
-      profiles: [USERNAME],
-      resultsPerPage: 1,
-      shouldDownloadVideos: false,
-      shouldDownloadCovers: false,
-      shouldDownloadSubtitles: false,
-      shouldDownloadSlideshowImages: false,
-    },
+    sources: [
+      {
+        actor: "clockworks/tiktok-scraper",
+        input: {
+          profiles: [USERNAME],
+          resultsPerPage: 1,
+          shouldDownloadVideos: false,
+          shouldDownloadCovers: false,
+          shouldDownloadSubtitles: false,
+          shouldDownloadSlideshowImages: false,
+        },
+      },
+    ],
   },
 ];
 
 const FOLLOWER_KEYS = new Set([
-  "followerscount", "followers", "follower_count", "followercount",
-  "fans", "fanscount", "subscribers", "subscribercount", "subscriber_count",
+  "followers", "followerscount", "follower_count", "followercount",
+  "followerstext", "followercounttext",
+  "fans", "fanscount",
+  "subscribers", "subscriberscount", "subscribercount", "subscriber_count",
+  "subscriberstext", "subscribercounttext", "numberofsubscribers",
+  "channelfollowercount",
 ]);
 
 function toNumber(value) {
   if (typeof value === "number" && isFinite(value)) return value;
   if (typeof value === "string") {
-    const s = value.trim().replace(/,/g, "");
-    const m = s.match(/^([\d.]+)\s*([kmb])?$/i);
+    const m = value.replace(/,/g, "").match(/([\d.]+)\s*([kmb])?/i);
     if (m) {
       let n = parseFloat(m[1]);
       const suf = (m[2] || "").toLowerCase();
@@ -87,21 +110,35 @@ function findFollowerCount(data) {
   return best;
 }
 
-async function runActor(platform) {
-  const actorPath = platform.actor.replace("/", "~");
+async function runActor(source) {
+  const actorPath = source.actor.replace("/", "~");
   const url =
     `https://api.apify.com/v2/acts/${actorPath}` +
     `/run-sync-get-dataset-items?token=${APIFY_TOKEN}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(platform.input),
+    body: JSON.stringify(source.input),
   });
-  if (!res.ok) throw new Error(`Apify ${platform.name} HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const items = await res.json();
-  const count = findFollowerCount(items);
-  if (!count) throw new Error(`Keine Followerzahl gefunden für ${platform.name}`);
-  return count;
+  return findFollowerCount(items);
+}
+
+async function fetchCount(platform) {
+  for (const source of platform.sources) {
+    try {
+      const count = await runActor(source);
+      if (count > 0) {
+        console.log(`${platform.name}: ${count} (via ${source.actor})`);
+        return count;
+      }
+      console.warn(`${platform.name} via ${source.actor}: keine Zahl gefunden.`);
+    } catch (err) {
+      console.warn(`${platform.name} via ${source.actor} fehlgeschlagen: ${err.message}`);
+    }
+  }
+  throw new Error(`Alle Quellen fehlgeschlagen für ${platform.name}`);
 }
 
 async function loadPrevious() {
@@ -121,13 +158,11 @@ const result = {
 
 for (const platform of PLATFORMS) {
   try {
-    const count = await runActor(platform);
-    result.platforms[platform.name] = count;
-    console.log(`${platform.name}: ${count}`);
+    result.platforms[platform.name] = await fetchCount(platform);
   } catch (err) {
     const fallback = previous.platforms?.[platform.name] || 0;
     result.platforms[platform.name] = fallback;
-    console.warn(`${platform.name} fehlgeschlagen (${err.message}). Behalte ${fallback}.`);
+    console.warn(`${platform.name} (${err.message}). Behalte ${fallback}.`);
   }
 }
 
