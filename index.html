@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MotivationVerz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0b0d12;
+    --ink-soft: #14171f;
+    --surface: #171b24;
+    --surface-hi: #1f2530;
+    --line: #2a303c;
+    --text: #f3f3ef;
+    --muted: #8b93a3;
+    --gold: #f5b62b;
+    --gold-hi: #ffcf5e;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    font-family: "Inter", system-ui, sans-serif;
+    background: var(--ink);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px 40px;
+    background-image:
+      radial-gradient(120% 80% at 50% -10%, rgba(245,182,43,0.10), transparent 55%),
+      radial-gradient(100% 60% at 50% 120%, rgba(245,182,43,0.05), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  .wrap { width: 100%; max-width: 460px; display: flex; flex-direction: column; align-items: center; }
+
+  .wordmark {
+    font-family: "Anton", sans-serif;
+    font-size: clamp(22px, 6vw, 28px);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+  .wordmark span { color: var(--gold); }
+
+  .tagline { margin-top: 14px; font-size: 14px; line-height: 1.5; color: var(--muted); text-align: center; max-width: 34ch; }
+
+  .hero { margin: 40px 0 34px; text-align: center; position: relative; }
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: -30% -20% -30% -20%;
+    background: radial-gradient(closest-side, rgba(245,182,43,0.16), transparent 75%);
+    z-index: 0;
+    pointer-events: none;
+  }
+  .hero-num {
+    position: relative;
+    z-index: 1;
+    font-family: "Anton", sans-serif;
+    font-size: clamp(70px, 24vw, 124px);
+    line-height: 0.9;
+    letter-spacing: -0.01em;
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero-label { position: relative; z-index: 1; margin-top: 16px; font-size: 14px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted); }
+
+  .links { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+
+  .link {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    text-decoration: none;
+    color: var(--text);
+    transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+  }
+  .link:hover, .link:focus-visible {
+    border-color: var(--gold);
+    background: var(--surface-hi);
+    transform: translateY(-2px);
+    outline: none;
+  }
+  .link:focus-visible { box-shadow: 0 0 0 3px rgba(245,182,43,0.35); }
+  .link:active { transform: translateY(0); }
+
+  .icon { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 11px; background: var(--ink-soft); }
+  .icon svg { width: 22px; height: 22px; display: block; }
+
+  .meta { flex: 1 1 auto; min-width: 0; }
+  .p-name { font-size: 16px; font-weight: 700; }
+  .p-handle { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .count { flex: 0 0 auto; text-align: right; }
+  .count b { display: block; font-size: 16px; font-weight: 700; color: var(--gold); }
+  .count span { font-size: 11px; color: var(--muted); }
+
+  footer { margin-top: 36px; font-size: 12px; color: var(--muted); text-align: center; letter-spacing: 0.02em; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <h1 class="wordmark">Motivation<span>Verz</span></h1>
+    <p class="tagline">Täglich neue Motivation. Folge auf allen Plattformen.</p>
+
+    <section class="hero" aria-label="Follower gesamt">
+      <div class="hero-num" id="total">0</div>
+      <div class="hero-label">Follower auf allen Plattformen</div>
+    </section>
+
+    <nav class="links" id="links" aria-label="Plattformen"></nav>
+
+    <footer>© 2026 MotivationVerz</footer>
+  </main>
+
+<script>
+/* Nur diese Links musst du hier pflegen. Die Zahlen kommen automatisch. */
+const LINKS = {
+  youtube:   "https://youtube.com/@motivationverz",
+  instagram: "https://instagram.com/motivationverz",
+  tiktok:    "https://tiktok.com/@motivationverz",
+};
+const HANDLE = "@motivationverz";
+
+const ORDER = ["youtube", "instagram", "tiktok"];
+const LABELS = { youtube: "YouTube", instagram: "Instagram", tiktok: "TikTok" };
+
+const ICONS = {
+  youtube: '<svg viewBox="0 0 24 24" fill="#ff3d3d"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.5 15.5v-7l6.3 3.5-6.3 3.5z"/></svg>',
+  instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="#e756a6" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1.1" fill="#e756a6" stroke="none"/></svg>',
+  tiktok: '<svg viewBox="0 0 24 24" fill="#6ff0e0"><path d="M16.5 3c.3 2 1.5 3.6 3.5 4v2.6c-1.3 0-2.5-.4-3.6-1.1v6.4a5.6 5.6 0 1 1-5.6-5.6c.3 0 .6 0 .9.1v2.7a2.9 2.9 0 1 0 2 2.8V3h2.8z"/></svg>',
+};
+
+function fmt(n) {
+  if (n >= 1000000) {
+    const v = Math.round(n / 100000) / 10;
+    return String(v).replace(".", ",") + " Mio.";
+  }
+  if (n >= 1000) return Math.round(n / 1000) + "K";
+  return String(n);
+}
+function fmtPlus(n) {
+  const floored = Math.floor(n / 1000) * 1000;
+  return fmt(floored) + "+";
+}
+
+function render(data) {
+  const platforms = data.platforms || {};
+  const linksEl = document.getElementById("links");
+  linksEl.innerHTML = "";
+
+  ORDER.forEach(key => {
+    const count = platforms[key] || 0;
+    const a = document.createElement("a");
+    a.className = "link";
+    a.href = LINKS[key];
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.innerHTML =
+      '<span class="icon">' + ICONS[key] + '</span>' +
+      '<span class="meta"><span class="p-name">' + LABELS[key] + '</span>' +
+      '<span class="p-handle">' + HANDLE + '</span></span>' +
+      '<span class="count"><b>' + fmt(count) + '</b><span>Follower</span></span>';
+    linksEl.appendChild(a);
+  });
+
+  animateTotal(data.total || 0);
+}
+
+function animateTotal(total) {
+  const el = document.getElementById("total");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce || total === 0) { el.textContent = fmtPlus(total); return; }
+  const dur = 1100;
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min((now - start) / dur, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = fmtPlus(Math.round(total * eased));
+    if (t < 1) requestAnimationFrame(tick);
+    else el.textContent = fmtPlus(total);
+  }
+  requestAnimationFrame(tick);
+}
+
+fetch("followers.json", { cache: "no-store" })
+  .then(r => r.json())
+  .then(render)
+  .catch(() => render({ platforms: {}, total: 0 }));
+</script>
+</body>
+</html>
