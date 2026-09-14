@@ -1,13 +1,12 @@
 /*
-  Holt die Followerzahlen von YouTube, Instagram und TikTok über Apify,
-  rechnet sie zusammen und schreibt sie in followers.json.
-  Läuft einmal am Tag automatisch über GitHub Actions.
-  Hier steht KEIN geheimer Schlüssel drin. Der kommt aus den GitHub Secrets.
+  Holt Followerzahlen von YouTube, Instagram und TikTok über Apify und
+  zusätzlich die Gesamtaufrufe des YouTube Kanals. Schreibt alles in
+  followers.json. Läuft täglich über GitHub Actions.
+  Hier steht KEIN geheimer Schlüssel drin, der kommt aus den GitHub Secrets.
 
-  Jede Plattform hat eine oder mehrere Quellen. Klappt die erste nicht,
-  wird automatisch die nächste versucht. Wenn eine Plattform gar nichts
-  liefert, wird die letzte bekannte Zahl behalten, damit die Summe nie
-  kaputtgeht.
+  Jede Plattform hat mehrere Quellen. Klappt die erste nicht, wird die
+  nächste versucht. Liefert eine Plattform gar nichts, bleibt die letzte
+  bekannte Zahl erhalten, damit nichts kaputtgeht.
 */
 
 import { readFile, writeFile } from "node:fs/promises";
@@ -19,33 +18,22 @@ if (!APIFY_TOKEN) {
 }
 
 const USERNAME = "motivationverz";
+const YT_URL = `https://www.youtube.com/@${USERNAME}`;
 
 const PLATFORMS = [
   {
     name: "youtube",
     sources: [
-      {
-        actor: "data_api/youtube-subscribers-scraper-cheap",
-        input: { youtubeHandle: USERNAME },
-      },
-      {
-        actor: "streamers/youtube-scraper",
-        input: {
-          startUrls: [{ url: `https://www.youtube.com/@${USERNAME}` }],
-          maxResults: 1,
-          maxResultsShorts: 0,
-          maxResultStreams: 0,
-        },
-      },
+      { actor: "gio21/youtube-channel-scraper", input: { handles: [USERNAME] } },
+      { actor: "scrapemamba/youtube-channel-scraper", input: { handles: [USERNAME] } },
+      { actor: "gio21/youtube-channel-scraper", input: { channelUrls: [YT_URL] } },
+      { actor: "data_api/youtube-subscribers-scraper-cheap", input: { youtubeHandle: USERNAME } },
     ],
   },
   {
     name: "instagram",
     sources: [
-      {
-        actor: "apify/instagram-profile-scraper",
-        input: { usernames: [USERNAME] },
-      },
+      { actor: "apify/instagram-profile-scraper", input: { usernames: [USERNAME] } },
     ],
   },
   {
@@ -75,6 +63,11 @@ const FOLLOWER_KEYS = new Set([
   "channelfollowercount",
 ]);
 
+const VIEW_KEYS = new Set([
+  "viewcount", "views", "totalviews", "totalviewcount",
+  "channelviewcount", "view_count", "lifetimeviews", "videoviewcount",
+]);
+
 function toNumber(value) {
   if (typeof value === "number" && isFinite(value)) return value;
   if (typeof value === "string") {
@@ -91,14 +84,14 @@ function toNumber(value) {
   return 0;
 }
 
-function findFollowerCount(data) {
+function scanMax(data, keys) {
   let best = 0;
   const visit = (node) => {
     if (node == null) return;
     if (Array.isArray(node)) { node.forEach(visit); return; }
     if (typeof node === "object") {
       for (const [key, value] of Object.entries(node)) {
-        if (FOLLOWER_KEYS.has(key.toLowerCase())) {
+        if (keys.has(key.toLowerCase())) {
           const n = toNumber(value);
           if (n > best) best = n;
         }
@@ -121,17 +114,18 @@ async function runActor(source) {
     body: JSON.stringify(source.input),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const items = await res.json();
-  return findFollowerCount(items);
+  return res.json();
 }
 
-async function fetchCount(platform) {
+async function fetchPlatform(platform) {
   for (const source of platform.sources) {
     try {
-      const count = await runActor(source);
-      if (count > 0) {
-        console.log(`${platform.name}: ${count} (via ${source.actor})`);
-        return count;
+      const items = await runActor(source);
+      const followers = scanMax(items, FOLLOWER_KEYS);
+      const views = scanMax(items, VIEW_KEYS);
+      if (followers > 0) {
+        console.log(`${platform.name}: ${followers} Follower, ${views} Views (via ${source.actor})`);
+        return { followers, views };
       }
       console.warn(`${platform.name} via ${source.actor}: keine Zahl gefunden.`);
     } catch (err) {
@@ -145,7 +139,7 @@ async function loadPrevious() {
   try {
     return JSON.parse(await readFile("followers.json", "utf8"));
   } catch {
-    return { platforms: {}, total: 0 };
+    return { platforms: {}, total: 0, youtubeViews: 0 };
   }
 }
 
@@ -153,20 +147,27 @@ const previous = await loadPrevious();
 const result = {
   platforms: {},
   total: 0,
+  youtubeViews: 0,
   updatedAt: new Date().toISOString(),
 };
 
 for (const platform of PLATFORMS) {
   try {
-    result.platforms[platform.name] = await fetchCount(platform);
+    const { followers, views } = await fetchPlatform(platform);
+    result.platforms[platform.name] = followers;
+    if (platform.name === "youtube") {
+      result.youtubeViews = views > 0 ? views : (previous.youtubeViews || 0);
+    }
   } catch (err) {
-    const fallback = previous.platforms?.[platform.name] || 0;
-    result.platforms[platform.name] = fallback;
-    console.warn(`${platform.name} (${err.message}). Behalte ${fallback}.`);
+    result.platforms[platform.name] = previous.platforms?.[platform.name] || 0;
+    if (platform.name === "youtube") {
+      result.youtubeViews = previous.youtubeViews || 0;
+    }
+    console.warn(`${platform.name} (${err.message}). Behalte alte Werte.`);
   }
 }
 
 result.total = Object.values(result.platforms).reduce((a, b) => a + b, 0);
 
 await writeFile("followers.json", JSON.stringify(result, null, 2) + "\n");
-console.log(`Gesamt: ${result.total}`);
+console.log(`Follower gesamt: ${result.total}, YouTube Views: ${result.youtubeViews}`);
